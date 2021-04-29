@@ -1,10 +1,9 @@
-﻿using System.Drawing;
-
-namespace SharpDom.Utils
+﻿namespace SharpDom.Utils
 {
     public class Optional<TData>
     {
-        private TData _value { get; }
+        private readonly TData _value;
+        
         public bool HasValue { get; }
 
         private Optional()
