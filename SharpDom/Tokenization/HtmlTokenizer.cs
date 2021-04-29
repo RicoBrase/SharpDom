@@ -1,8 +1,5 @@
 ﻿using System;
-using System.Collections;
 using System.Collections.Generic;
-using System.Diagnostics;
-using System.Globalization;
 using System.Text.RegularExpressions;
 using SharpDom.Infra.Unicode;
 using SharpDom.Parsing;
@@ -13,15 +10,15 @@ namespace SharpDom.Tokenization
 {
     public class HtmlTokenizer
     {
-        private string _input { get; } 
-        private Queue<HtmlToken> _tokens = new();
-        private Queue<HtmlParseError> _errors = new();
+        private readonly string _input;
+        private readonly Queue<HtmlToken> _tokens = new();
+        private readonly Queue<HtmlParseError> _errors = new();
 
-        private int _cursor = 0;
-        private bool _reconsume = false;
-        private bool _isEof = false;
+        private int _cursor;
+        private bool _reconsume;
+        private bool _isEof;
         
-        private bool _debug = false;
+        private readonly bool _debug;
 
         private HtmlTokenizerState _state = HtmlTokenizerState.Data;
         
