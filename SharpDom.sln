@@ -7,6 +7,7 @@ EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Solution Files", "Solution Files", "{0E82DE4A-B557-41F1-9151-1F0AD82729F2}"
 ProjectSection(SolutionItems) = preProject
 	.gitignore = .gitignore
+	README.md = README.md
 EndProjectSection
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SharpDom.Demo", "SharpDom.Demo\SharpDom.Demo.csproj", "{B60D4064-EC54-41A7-806A-C8AF69201D79}"
