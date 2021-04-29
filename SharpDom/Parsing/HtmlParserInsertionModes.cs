@@ -1,0 +1,29 @@
+﻿namespace SharpDom.Parsing
+{
+    public enum HtmlParserInsertionModes
+    {
+        Initial,
+        BeforeHtml,
+        BeforeHead,
+        InHead,
+        InHeadNoScript,
+        AfterHead,
+        InBody,
+        Text,
+        InTable,
+        InTableText,
+        InCaption,
+        InColumnGroup,
+        InTableBody,
+        InRow,
+        InCell,
+        InSelect,
+        InSelectInTable,
+        InTemplate,
+        AfterBody,
+        InFrameset,
+        AfterFrameset,
+        AfterAfterBody,
+        AfterAfterFrameset
+    }
+}
