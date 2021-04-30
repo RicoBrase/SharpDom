@@ -22,5 +22,21 @@ namespace SharpDom.Tokenization
         {
             return $"{KeyBuilder} = {ValueBuilder}";
         }
+
+        public override bool Equals(object obj)
+        {
+            if (obj is Attribute attr)
+            {
+                return KeyBuilder.ToString().Equals(attr.KeyBuilder.ToString()) &&
+                       ValueBuilder.ToString().Equals(attr.ValueBuilder.ToString());
+            }
+
+            return false;
+        }
+
+        public override int GetHashCode()
+        {
+            return HashCode.Combine(KeyBuilder, ValueBuilder);
+        }
     }
 }
