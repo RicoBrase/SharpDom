@@ -677,6 +677,83 @@ namespace SharpDom.Tokenization
                     EmitEndOfFileToken();
                     break;
                 
+                case HtmlTokenizerState.CommentLessThanSign:
+                    ConsumeNextInputChar();
+                    if (_currentInputChar.TryGet(out currChar))
+                    {
+                        switch (currChar)
+                        {
+                            case '!':
+                                ((HtmlCommentToken) _currentToken).Data += currChar;
+                                SwitchToState(HtmlTokenizerState.CommentLessThanSignBang);
+                                break;
+                            case '<':
+                                ((HtmlCommentToken) _currentToken).Data += currChar;
+                                break;
+                            default:
+                                ReconsumeInState(HtmlTokenizerState.Comment);
+                                break;
+                        }
+                        return;
+                    }
+                    ReconsumeInState(HtmlTokenizerState.Comment);
+                    break;
+                
+                case HtmlTokenizerState.CommentLessThanSignBang:
+                    ConsumeNextInputChar();
+                    if (_currentInputChar.TryGet(out currChar))
+                    {
+                        switch (currChar)
+                        {
+                            case '-':
+                                SwitchToState(HtmlTokenizerState.CommentLessThanSignBangDash);
+                                break;
+                            default:
+                                ReconsumeInState(HtmlTokenizerState.Comment);
+                                break;
+                        }
+                        return;
+                    }
+                    ReconsumeInState(HtmlTokenizerState.Comment);
+                    break;
+                
+                case HtmlTokenizerState.CommentLessThanSignBangDash:
+                    ConsumeNextInputChar();
+                    if (_currentInputChar.TryGet(out currChar))
+                    {
+                        switch (currChar)
+                        {
+                            case '-':
+                                SwitchToState(HtmlTokenizerState.CommentLessThanSignBangDashDash);
+                                break;
+                            default:
+                                ReconsumeInState(HtmlTokenizerState.CommentEndDash);
+                                break;
+                        }
+                        return;
+                    }
+                    ReconsumeInState(HtmlTokenizerState.CommentEndDash);
+                    break;
+                
+                case HtmlTokenizerState.CommentLessThanSignBangDashDash:
+                    ConsumeNextInputChar();
+                    if (_currentInputChar.TryGet(out currChar))
+                    {
+                        switch (currChar)
+                        {
+                            case '>':
+                                ReconsumeInState(HtmlTokenizerState.CommentEnd);
+                                break;
+                            default:
+                                ParseError(HtmlParseError.NestedComment);
+                                ReconsumeInState(HtmlTokenizerState.CommentEnd);
+                                break;
+                        }
+                        return;
+                    }
+                    ReconsumeInState(HtmlTokenizerState.CommentEnd);
+                    break;
+                
                 case HtmlTokenizerState.CommentEndDash:
                     ConsumeNextInputChar();
                     if (_currentInputChar.TryGet(out currChar))
@@ -688,6 +765,7 @@ namespace SharpDom.Tokenization
                                 break;
                             default:
                                 ((HtmlCommentToken) _currentToken).Data += '-';
+                                ReconsumeInState(HtmlTokenizerState.Comment);
                                 break;
                         }
                         return;
@@ -930,10 +1008,11 @@ namespace SharpDom.Tokenization
         private void Debug_PrintChars()
         {
             const string empty = "<<EMPTY>>";
+            const string space = "<<SPACE>>";
             
             _nextInputChar.TryGet(out var nextChar);
             _currentInputChar.TryGet(out var currChar);
-            Console.WriteLine($"[DBG] Consume | Current: {(_currentInputChar.HasValue ? Regex.Escape(currChar.ToString()) : empty)} Next: {(_nextInputChar.HasValue ? Regex.Escape(nextChar.ToString()) : empty)}");
+            Console.WriteLine($"[DBG] Consume | Current: {(_currentInputChar.HasValue ? Regex.Escape(currChar.ToString().Replace(" ", space)) : empty)} Next: {(_nextInputChar.HasValue ? Regex.Escape(nextChar.ToString().Replace(" ", space)) : empty)}");
         }
 
         private void ShouldNotBeReachable()
