@@ -1,4 +1,5 @@
-﻿using System.Text;
+﻿using System;
+using System.Text;
 
 namespace SharpDom.Tokenization
 {
@@ -6,7 +7,11 @@ namespace SharpDom.Tokenization
     {
         public StringBuilder KeyBuilder { get; }
         public StringBuilder ValueBuilder { get; }
-        
+        public bool Removed { get; set; }
+
+        public string Key => KeyBuilder.ToString();
+        public string Value => ValueBuilder.ToString();
+
         private Attribute()
         {
             KeyBuilder = new StringBuilder();
