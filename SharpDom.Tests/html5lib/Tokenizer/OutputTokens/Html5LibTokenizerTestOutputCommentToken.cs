@@ -1,8 +1,11 @@
-﻿namespace SharpDom.Tests.html5lib.Tokenizer.OutputTokens
+﻿using SharpDom.Tokenization;
+
+namespace SharpDom.Tests.html5lib.Tokenizer.OutputTokens
 {
     public class Html5LibTokenizerTestOutputCommentToken : Html5LibTokenizerTestOutputToken
     {
         public string Data { get; init; }
         public override string TokenName => "Comment";
+        public override HtmlTokenType TokenType => HtmlTokenType.Comment;
     }
 }

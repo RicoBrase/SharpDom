@@ -8,17 +8,19 @@ namespace SharpDom.Tests.html5lib.tokenizer
         public string Index { get; set; }
         public string Description { get; init; }
         public string Input { get; init; }
-        public string[] InitialStates { get; init; }
+        public string InitialState { get; init; }
         public Html5LibTokenizerTestOutputToken[] Output { get; init; }
+        public Html5LibTokenizerTestError[] Errors { get; init; }
 
         public Html5LibTokenizerTestData()
         {
-            InitialStates = Array.Empty<string>();
+            Output = Array.Empty<Html5LibTokenizerTestOutputToken>();
+            Errors = Array.Empty<Html5LibTokenizerTestError>();
         }
 
         public override string ToString()
         {
-            return $"{Index} ➡ {Description}";
+            return $"{Index}{(!string.IsNullOrEmpty(InitialState) ? $"[state={InitialState}]" : "")} ➡ {Description}";
         }
     }
 }

@@ -40,6 +40,7 @@ namespace SharpDom.Tests.html5lib.tokenizer
                 var outputJson = (JArray) testJson["output"];
                 var outputTokens = new List<Html5LibTokenizerTestOutputToken>();
                 var initialStates = new List<string>();
+                var errors = new List<Html5LibTokenizerTestError>();
 
                 foreach (var jToken in outputJson!)
                 {
@@ -96,6 +97,21 @@ namespace SharpDom.Tests.html5lib.tokenizer
                     }
                 }
 
+                if (testJson.ContainsKey("errors"))
+                {
+                    var errorsJson = (JArray) testJson["errors"];
+                    foreach (var jToken in errorsJson!)
+                    {
+                        var error = (JObject) jToken;
+                        errors.Add(new Html5LibTokenizerTestError
+                        {
+                            Code = (string)error["code"],
+                            Line = (int)error["line"],
+                            Column = (int)error["col"]
+                        });
+                    }
+                }
+                
                 if (testJson.ContainsKey("initialStates"))
                 {
                     var initialStatsJson = (JArray) testJson["initialStates"];
@@ -104,22 +120,38 @@ namespace SharpDom.Tests.html5lib.tokenizer
                         initialStates.Add(state);
                     }
                 }
-                
-                
-                tests.Add(new Html5LibTokenizerTestData
+
+                if (initialStates.Count > 0)
                 {
-                    Index = $"{index++}",
-                    Description = (string)testJson["description"],
-                    InitialStates = initialStates.ToArray(),
-                    Input = (string)testJson["input"],
-                    Output = outputTokens.ToArray()
-                });
+                    foreach (var state in initialStates)
+                    {
+                        tests.Add(new Html5LibTokenizerTestData
+                        {
+                            Index = $"{index++}",
+                            Description = (string) testJson["description"],
+                            InitialState = state,
+                            Input = (string) testJson["input"],
+                            Output = outputTokens.ToArray(),
+                            Errors = errors.ToArray()
+                        });
+                    }
+                }
+                else
+                {
+                    tests.Add(new Html5LibTokenizerTestData
+                    {
+                        Index = $"{index++}",
+                        Description = (string) testJson["description"],
+                        Input = (string) testJson["input"],
+                        Output = outputTokens.ToArray(),
+                        Errors = errors.ToArray()
+                    });
+                }
             }
 
             var maxIndexString = index.ToString();
             
-            // TODO: Run ALL tests, not only those without "initialStates"
-            var testData = tests.Where(it => it.InitialStates.Length == 0)
+            var testData = tests
                 .Select(it =>
                 {
                     while (maxIndexString.Length > it.Index.Length)

@@ -1,5 +1,6 @@
 ﻿using System.Collections.Generic;
 using SharpDom.Tests.html5lib.tokenizer;
+using SharpDom.Tokenization;
 
 namespace SharpDom.Tests.html5lib.Tokenizer.OutputTokens
 {
@@ -10,6 +11,7 @@ namespace SharpDom.Tests.html5lib.Tokenizer.OutputTokens
         public bool SelfClosing { get; init; }
 
         public override string TokenName => "StartTag";
+        public override HtmlTokenType TokenType => HtmlTokenType.StartTag;
         
         public Html5LibTokenizerTestOutputStartTagToken()
         {
