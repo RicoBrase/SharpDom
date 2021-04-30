@@ -50,7 +50,7 @@
         MarkupDeclarationOpen,
         CommentStart,
         CommentStartDash,
-        CommentState,
+        Comment,
         CommentLessThanSign,
         CommentLessThanSignBang,
         CommentLessThanSignBangDash,
