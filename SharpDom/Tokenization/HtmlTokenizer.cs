@@ -94,7 +94,7 @@ namespace SharpDom.Tokenization
                                 SwitchToState(HtmlTokenizerState.TagOpen);
                                 break;
                             case Codepoint.NULL:
-                                ParseError("unexpected-null-character");
+                                ParseError(HtmlParseError.UnexpectedNullCharacter);
                                 CreateToken(new HtmlCharacterToken {Data = currChar.ToString()});
                                 EmitCurrentToken();
                                 // RunTokenizationStep();
@@ -124,7 +124,7 @@ namespace SharpDom.Tokenization
                                 SwitchToState(HtmlTokenizerState.EndTagOpen);
                                 break;
                             case '?':
-                                ParseError("unexpected-question-mark-instead-of-tag-name");
+                                ParseError(HtmlParseError.UnexpectedQuestionMarkInsteadOfTagName);
                                 CreateToken(new HtmlCommentToken {Data = ""});
                                 ReconsumeInState(HtmlTokenizerState.BogusComment);
                                 break;
@@ -136,7 +136,7 @@ namespace SharpDom.Tokenization
                                     ReconsumeInState(HtmlTokenizerState.TagName);
                                     return;
                                 }
-                                ParseError("invalid-first-character-of-tag-name");
+                                ParseError(HtmlParseError.InvalidFirstCharacterOfTagName);
                                 CreateToken(new HtmlCharacterToken {Data = '<'.ToString()});
                                 EmitCurrentToken();
                                 ReconsumeInState(HtmlTokenizerState.Data);
@@ -165,7 +165,7 @@ namespace SharpDom.Tokenization
                         SwitchToState(HtmlTokenizerState.Doctype);
                         return;
                     }
-                    ParseError("incorrectly-opened-comment");
+                    ParseError(HtmlParseError.IncorrectlyOpenedComment);
                     CreateToken(new HtmlCommentToken { Data = "" });
                     SwitchToState(HtmlTokenizerState.BogusComment);
                     break;
@@ -187,13 +187,13 @@ namespace SharpDom.Tokenization
                                 ReconsumeInState(HtmlTokenizerState.BeforeDoctypeName);
                                 break;
                             default:
-                                ParseError("missing-whitespace-before-doctype-name");
+                                ParseError(HtmlParseError.MissingWhitespaceBeforeDoctypeName);
                                 ReconsumeInState(HtmlTokenizerState.BeforeDoctypeName);
                                 break;
                         }
                         return;
                     }
-                    ParseError("eof-in-doctype");
+                    ParseError(HtmlParseError.EofInDoctype);
                     CreateToken(new HtmlDoctypeToken
                     {
                         ForceQuirks = true
@@ -252,7 +252,7 @@ namespace SharpDom.Tokenization
                                 break;
                         }
                     }
-                    ParseError("eof-in-doctype");
+                    ParseError(HtmlParseError.EofInDoctype);
                     CreateToken(new HtmlDoctypeToken
                     {
                         ForceQuirks = true
@@ -292,7 +292,7 @@ namespace SharpDom.Tokenization
                         }
                         return;
                     }
-                    ParseError("eof-in-doctype");
+                    ParseError(HtmlParseError.EofInDoctype);
                     ((HtmlDoctypeToken) _currentToken).ForceQuirks = true;
                     EmitCurrentToken();
                     EmitEndOfFileToken();
@@ -317,7 +317,7 @@ namespace SharpDom.Tokenization
                                 SwitchToState(HtmlTokenizerState.Data);
                                 break;
                             case Codepoint.NULL:
-                                ParseError("unexpected-null-character");
+                                ParseError(HtmlParseError.UnexpectedNullCharacter);
                                 ((HtmlTagToken) _currentToken).TagName += Codepoint.REPLACEMENT_CHARACTER;
                                 break;
                             default:
@@ -329,7 +329,7 @@ namespace SharpDom.Tokenization
                         }
                         return;
                     }
-                    ParseError("eof-in-tag");
+                    ParseError(HtmlParseError.EofInTag);
                     EmitEndOfFileToken();
                     break;
                 
@@ -340,7 +340,7 @@ namespace SharpDom.Tokenization
                         switch (currChar)
                         {
                             case '>':
-                                ParseError("missing-end-tag-name");
+                                ParseError(HtmlParseError.MissingEndTagName);
                                 SwitchToState(HtmlTokenizerState.Data);
                                 break;
                             default:
@@ -350,14 +350,14 @@ namespace SharpDom.Tokenization
                                     ReconsumeInState(HtmlTokenizerState.TagName);
                                     return;
                                 }
-                                ParseError("invalid-first-character-of-tag-name");
+                                ParseError(HtmlParseError.InvalidFirstCharacterOfTagName);
                                 CreateToken(new HtmlCommentToken {Data = ""});
                                 ReconsumeInState(HtmlTokenizerState.BogusComment);
                                 break;
                         }
                         return;
                     }
-                    ParseError("eof-before-tag-name");
+                    ParseError(HtmlParseError.EofBeforeTagName);
                     CreateToken(new HtmlCharacterToken {Data = '<'.ToString()});
                     EmitCurrentToken();
                     CreateToken(new HtmlCharacterToken {Data = '/'.ToString()});
@@ -382,7 +382,7 @@ namespace SharpDom.Tokenization
                                 ReconsumeInState(HtmlTokenizerState.AfterAttributeName);
                                 break;
                             case '=':
-                                ParseError("unexpected-equals-sign-before-attribute-name");
+                                ParseError(HtmlParseError.UnexpectedEqualsSignBeforeAttributeName);
                                 ((HtmlTagToken) _currentToken).CurrentAttribute.KeyBuilder.Append(currChar);
                                 SwitchToState(HtmlTokenizerState.AttributeName);
                                 break;
@@ -414,13 +414,13 @@ namespace SharpDom.Tokenization
                                 SwitchToState(HtmlTokenizerState.BeforeAttributeValue);
                                 break;
                             case Codepoint.NULL:
-                                ParseError("unexpected-null-character");
+                                ParseError(HtmlParseError.UnexpectedNullCharacter);
                                 ((HtmlTagToken) _currentToken).CurrentAttribute.KeyBuilder.Append(Codepoint.REPLACEMENT_CHARACTER);
                                 break;
                             case '"':
                             case Codepoint.APOSTROPHE:
                             case '<':
-                                ParseError("unexpected-character-in-attribute-name");
+                                ParseError(HtmlParseError.UnexpectedCharacterInAttributeName);
                                 ((HtmlTagToken) _currentToken).CurrentAttribute.KeyBuilder.Append(currChar);
                                 break;
                             default:
@@ -451,7 +451,7 @@ namespace SharpDom.Tokenization
                                 SwitchToState(HtmlTokenizerState.AttributeValueSingleQuoted);
                                 break;
                             case '>':
-                                ParseError("missing-attribute-value");
+                                ParseError(HtmlParseError.MissingAttributeValue);
                                 EmitCurrentToken();
                                 SwitchToState(HtmlTokenizerState.Data);
                                 break;
@@ -478,7 +478,7 @@ namespace SharpDom.Tokenization
                                 SwitchToState(HtmlTokenizerState.CharacterReference);
                                 break;
                             case Codepoint.NULL:
-                                ParseError("unexpected-null-character");
+                                ParseError(HtmlParseError.UnexpectedNullCharacter);
                                 ((HtmlTagToken) _currentToken).CurrentAttribute.ValueBuilder.Append(Codepoint.REPLACEMENT_CHARACTER);
                                 break;
                             default:
@@ -487,7 +487,7 @@ namespace SharpDom.Tokenization
                         }
                         return;
                     }
-                    ParseError("eof-in-tag");
+                    ParseError(HtmlParseError.EofInTag);
                     EmitEndOfFileToken();
                     break;
                 
@@ -505,7 +505,7 @@ namespace SharpDom.Tokenization
                                 SwitchToState(HtmlTokenizerState.CharacterReference);
                                 break;
                             case Codepoint.NULL:
-                                ParseError("unexpected-null-character");
+                                ParseError(HtmlParseError.UnexpectedNullCharacter);
                                 ((HtmlTagToken) _currentToken).CurrentAttribute.ValueBuilder.Append(Codepoint.REPLACEMENT_CHARACTER);
                                 break;
                             default:
@@ -514,7 +514,7 @@ namespace SharpDom.Tokenization
                         }
                         return;
                     }
-                    ParseError("eof-in-tag");
+                    ParseError(HtmlParseError.EofInTag);
                     EmitEndOfFileToken();
                     break;
                 
@@ -539,7 +539,7 @@ namespace SharpDom.Tokenization
                                 SwitchToState(HtmlTokenizerState.Data);
                                 break;
                             case Codepoint.NULL:
-                                ParseError("unexpected-null-character");
+                                ParseError(HtmlParseError.UnexpectedNullCharacter);
                                 ((HtmlTagToken) _currentToken).CurrentAttribute.ValueBuilder.Append(Codepoint.REPLACEMENT_CHARACTER);
                                 break;
                             case '"':
@@ -547,7 +547,7 @@ namespace SharpDom.Tokenization
                             case '<':
                             case '=':
                             case Codepoint.GRAVE_ACCENT:
-                                ParseError("unexpected-character-in-unquoted-attribute-value");
+                                ParseError(HtmlParseError.UnexpectedCharacterInUnquotedAttributeValue);
                                 ((HtmlTagToken) _currentToken).CurrentAttribute.ValueBuilder.Append(currChar);
                                 break;
                             default:
@@ -556,7 +556,7 @@ namespace SharpDom.Tokenization
                         }
                         return;
                     }
-                    ParseError("eof-in-tag");
+                    ParseError(HtmlParseError.EofInTag);
                     EmitEndOfFileToken();
                     break;
                 
@@ -580,13 +580,13 @@ namespace SharpDom.Tokenization
                                 SwitchToState(HtmlTokenizerState.Data);
                                 break;
                             default:
-                                ParseError("missing-whitespace-between-attributes");
+                                ParseError(HtmlParseError.MissingWhitespaceBetweenAttributes);
                                 ReconsumeInState(HtmlTokenizerState.BeforeAttributeName);
                                 break;
                         }
                         return;
                     }
-                    ParseError("eof-in-tag");
+                    ParseError(HtmlParseError.EofInTag);
                     EmitEndOfFileToken();
                     break;
                 
@@ -600,7 +600,7 @@ namespace SharpDom.Tokenization
                                 SwitchToState(HtmlTokenizerState.CommentStartDash);
                                 break;
                             case '>':
-                                ParseError("abrupt-closing-of-empty-comment");
+                                ParseError(HtmlParseError.AbruptClosingOfEmptyComment);
                                 EmitCurrentToken();
                                 SwitchToState(HtmlTokenizerState.Data);
                                 break;
@@ -627,7 +627,7 @@ namespace SharpDom.Tokenization
                                 SwitchToState(HtmlTokenizerState.CommentEndDash);
                                 break;
                             case Codepoint.NULL:
-                                ParseError("unexpected-null-character");
+                                ParseError(HtmlParseError.UnexpectedNullCharacter);
                                 ((HtmlCommentToken) _currentToken).Data += Codepoint.REPLACEMENT_CHARACTER;
                                 break;
                             default:
@@ -636,7 +636,7 @@ namespace SharpDom.Tokenization
                         }
                         return;
                     }
-                    ParseError("eof-in-comment");
+                    ParseError(HtmlParseError.EofInComment);
                     EmitCurrentToken();
                     EmitEndOfFileToken();
                     break;
@@ -656,7 +656,7 @@ namespace SharpDom.Tokenization
                         }
                         return;
                     }
-                    ParseError("eof-in-comment");
+                    ParseError(HtmlParseError.EofInComment);
                     EmitCurrentToken();
                     EmitEndOfFileToken();
                     break;
@@ -684,7 +684,7 @@ namespace SharpDom.Tokenization
                         }
                         return;
                     }
-                    ParseError("eof-in-comment");
+                    ParseError(HtmlParseError.EofInComment);
                     EmitCurrentToken();
                     EmitEndOfFileToken();
                     break;
@@ -700,7 +700,7 @@ namespace SharpDom.Tokenization
                                 SwitchToState(HtmlTokenizerState.Data);
                                 break;
                             case Codepoint.NULL:
-                                ParseError("unexpected-null-character");
+                                ParseError(HtmlParseError.UnexpectedNullCharacter);
                                 ((HtmlCommentToken) _currentToken).Data += Codepoint.REPLACEMENT_CHARACTER;
                                 break;
                             default:
@@ -834,11 +834,11 @@ namespace SharpDom.Tokenization
             
             ShouldNotBeReachable();
         }
-        // ===============
-
-        private void ParseError(string errorType)
+        
+        private void ParseError(HtmlParseError error)
         {
-            Console.Error.WriteLine($"Tokenizer parse error: {errorType}");
+            Console.Error.WriteLine($"Tokenizer parse error: {error}");
+            _errors.Enqueue(error);
         }
         
         private void Debug_PrintChars()
