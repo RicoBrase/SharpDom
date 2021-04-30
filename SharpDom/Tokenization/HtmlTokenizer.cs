@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Text.RegularExpressions;
 using SharpDom.Infra.Unicode;
 using SharpDom.Parsing;
@@ -31,6 +32,14 @@ namespace SharpDom.Tokenization
         {
             _input = InputStreamPreprocessor.PreprocessInputStream(input);
             _debug = debugMode;
+        }
+
+        internal HtmlTokenizer(string input, bool debugMode = false,
+            HtmlTokenizerState initialState = HtmlTokenizerState.Data)
+        : this(input, debugMode)
+        {
+            _state = initialState;
+            if(_debug) Console.WriteLine($"[DBG] Starting with State: {Enum.GetName(initialState)}");
         }
 
         public HtmlTokenizationResult Run()
@@ -97,12 +106,10 @@ namespace SharpDom.Tokenization
                                 ParseError(HtmlParseError.UnexpectedNullCharacter);
                                 CreateToken(new HtmlCharacterToken {Data = currChar.ToString()});
                                 EmitCurrentToken();
-                                // RunTokenizationStep();
                                 break;
                             default:
                                 CreateToken(new HtmlCharacterToken {Data = currChar.ToString()});
                                 EmitCurrentToken();
-                                // RunTokenizationStep();
                                 break;
                         }
 
@@ -251,6 +258,7 @@ namespace SharpDom.Tokenization
                                 SwitchToState(HtmlTokenizerState.DoctypeName);
                                 break;
                         }
+                        return;
                     }
                     ParseError(HtmlParseError.EofInDoctype);
                     CreateToken(new HtmlDoctypeToken
@@ -408,9 +416,11 @@ namespace SharpDom.Tokenization
                             case Codepoint.SPACE:
                             case '/':
                             case '>':
+                                CheckTagAttributes();
                                 ReconsumeInState(HtmlTokenizerState.AfterAttributeName);
                                 break;
                             case '=':
+                                CheckTagAttributes();
                                 SwitchToState(HtmlTokenizerState.BeforeAttributeValue);
                                 break;
                             case Codepoint.NULL:
@@ -429,6 +439,7 @@ namespace SharpDom.Tokenization
                         }
                         return;
                     }
+                    CheckTagAttributes();
                     ReconsumeInState(HtmlTokenizerState.AfterAttributeName);
                     break;
                 
@@ -605,15 +616,41 @@ namespace SharpDom.Tokenization
                                 SwitchToState(HtmlTokenizerState.Data);
                                 break;
                             default:
-                                ReconsumeInState(HtmlTokenizerState.CommentState);
+                                ReconsumeInState(HtmlTokenizerState.Comment);
                                 break;
                         }
                         return;
                     }
-                    ReconsumeInState(HtmlTokenizerState.CommentState);
+                    ReconsumeInState(HtmlTokenizerState.Comment);
                     break;
                 
-                case HtmlTokenizerState.CommentState:
+                case HtmlTokenizerState.CommentStartDash:
+                    ConsumeNextInputChar();
+                    if (_currentInputChar.TryGet(out currChar))
+                    {
+                        switch (currChar)
+                        {
+                            case '-':
+                                SwitchToState(HtmlTokenizerState.CommentEnd);
+                                break;
+                            case '>':
+                                ParseError(HtmlParseError.AbruptClosingOfEmptyComment);
+                                EmitCurrentToken();
+                                SwitchToState(HtmlTokenizerState.Data);
+                                break;
+                            default:
+                                ((HtmlCommentToken) _currentToken).Data += '-';
+                                ReconsumeInState(HtmlTokenizerState.Comment);
+                                break;
+                        }
+                        return;
+                    }
+                    ParseError(HtmlParseError.EofInComment);
+                    EmitCurrentToken();
+                    EmitEndOfFileToken();
+                    break;
+                
+                case HtmlTokenizerState.Comment:
                     ConsumeNextInputChar();
                     if (_currentInputChar.TryGet(out currChar))
                     {
@@ -679,7 +716,7 @@ namespace SharpDom.Tokenization
                                 break;
                             default:
                                 ((HtmlCommentToken) _currentToken).Data += "--";
-                                ReconsumeInState(HtmlTokenizerState.CommentState);
+                                ReconsumeInState(HtmlTokenizerState.Comment);
                                 break;
                         }
                         return;
@@ -729,6 +766,31 @@ namespace SharpDom.Tokenization
         
         private void EmitCurrentToken()
         {
+            // Remove "removed" attributes from HtmlTagTokens (e.g. duplicated attributes)
+            if (_currentToken is HtmlTagToken tagToken)
+            {
+                if (tagToken is HtmlStartTagToken startTagToken)
+                {
+                    if (startTagToken.SelfClosing && !startTagToken.SelfClosingAcknowledged)
+                    {
+                        ParseError(HtmlParseError.NonVoidHtmlElementStartTagWithTrailingSolidus);
+                    }    
+                }
+                
+                if (tagToken is HtmlEndTagToken endTagToken)
+                {
+                    if (endTagToken.Attributes.Count > 0)
+                    {
+                        ParseError(HtmlParseError.EndTagWithAttributes);
+                    }
+
+                    if (endTagToken.SelfClosing)
+                    {
+                        ParseError(HtmlParseError.EndTagWithTrailingSolidus);
+                    }
+                }
+                tagToken.Attributes.RemoveAll(it => it.Removed);
+            }
             _tokens.Enqueue(_currentToken);
             if(_debug) Console.WriteLine($"[DBG] Emitting Token: {_currentToken}");
         }
@@ -840,7 +902,25 @@ namespace SharpDom.Tokenization
             Console.Error.WriteLine($"Tokenizer parse error: {error}");
             _errors.Enqueue(error);
         }
+
+        private void CheckTagAttributes()
+        {
+            if (_currentToken is not HtmlTagToken token) return;
+            var attributeNames = new List<string>();
+            foreach (var attribute in token.Attributes)
+            {
+                if (attributeNames.Contains(attribute.Key))
+                {
+                    ParseError(HtmlParseError.DuplicateAttribute);
+                    attribute.Removed = true;
+                    return;
+                }
+                attributeNames.Add(attribute.Key);
+            }
+        }
         
+        // DEBUG ===============
+
         private void Debug_PrintChars()
         {
             const string empty = "<<EMPTY>>";
