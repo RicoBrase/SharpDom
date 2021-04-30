@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Text;
 using System.Text.RegularExpressions;
 using SharpDom.Infra.Unicode;
 using SharpDom.Parsing;
@@ -21,6 +22,9 @@ namespace SharpDom.Tokenization
         private readonly bool _debug;
 
         private HtmlTokenizerState _state = HtmlTokenizerState.Data;
+        private HtmlTokenizerState _returnState;
+
+        private StringBuilder _temporaryBuffer = new();
         
         private Optional<char> _nextInputChar = Optional<char>.Empty();
         private Optional<char> _currentInputChar = Optional<char>.Empty();
@@ -97,6 +101,8 @@ namespace SharpDom.Tokenization
                         switch (currChar)
                         {
                             case '&':
+                                _returnState = HtmlTokenizerState.Data;
+                                SwitchToState(HtmlTokenizerState.CharacterReference);
                                 break;
                             case '<':
                                 SwitchToState(HtmlTokenizerState.TagOpen);
@@ -112,6 +118,30 @@ namespace SharpDom.Tokenization
                                 break;
                         }
 
+                        return;
+                    }
+                    EmitEndOfFileToken();
+                    break;
+                
+                case HtmlTokenizerState.ScriptData:
+                    ConsumeNextInputChar();
+                    if (_currentInputChar.TryGet(out currChar))
+                    {
+                        switch (currChar)
+                        {
+                            case '<':
+                                SwitchToState(HtmlTokenizerState.ScriptDataLessThanSign);
+                                break;
+                            case Codepoint.NULL:
+                                ParseError(HtmlParseError.UnexpectedNullCharacter);
+                                CreateToken(new HtmlCharacterToken {Data = Codepoint.REPLACEMENT_CHARACTER.ToString()});
+                                EmitCurrentToken();
+                                break;
+                            default:
+                                CreateToken(new HtmlCharacterToken {Data = currChar.ToString()});
+                                EmitCurrentToken();
+                                break;
+                        }
                         return;
                     }
                     EmitEndOfFileToken();
@@ -156,154 +186,38 @@ namespace SharpDom.Tokenization
                     EmitEndOfFileToken();
                     break;
                 
-                case HtmlTokenizerState.MarkupDeclarationOpen:
-                    if (PeekCaseSensitive("--"))
-                    {
-                        ConsumeString("--");
-                        CreateToken(new HtmlCommentToken {Data = ""});
-                        SwitchToState(HtmlTokenizerState.CommentStart);
-                        return;
-                    }
-
-                    if (PeekCaseInsensitive("DOCTYPE"))
-                    {
-                        ConsumeString("DOCTYPE");
-                        SwitchToState(HtmlTokenizerState.Doctype);
-                        return;
-                    }
-                    ParseError(HtmlParseError.IncorrectlyOpenedComment);
-                    CreateToken(new HtmlCommentToken { Data = "" });
-                    SwitchToState(HtmlTokenizerState.BogusComment);
-                    break;
-                
-                case HtmlTokenizerState.Doctype:
+                case HtmlTokenizerState.EndTagOpen:
                     ConsumeNextInputChar();
                     if (_currentInputChar.TryGet(out currChar))
                     {
                         switch (currChar)
                         {
-                            case Codepoint.TAB:
-                            case Codepoint.LF:
-                            case Codepoint.FF:
-                            case Codepoint.SPACE:
-                                SwitchToState(HtmlTokenizerState.BeforeDoctypeName);
-                                break;
-                            
                             case '>':
-                                ReconsumeInState(HtmlTokenizerState.BeforeDoctypeName);
-                                break;
-                            default:
-                                ParseError(HtmlParseError.MissingWhitespaceBeforeDoctypeName);
-                                ReconsumeInState(HtmlTokenizerState.BeforeDoctypeName);
-                                break;
-                        }
-                        return;
-                    }
-                    ParseError(HtmlParseError.EofInDoctype);
-                    CreateToken(new HtmlDoctypeToken
-                    {
-                        ForceQuirks = true
-                    });
-                    EmitCurrentToken();
-                    EmitEndOfFileToken();
-                    break;
-                
-                case HtmlTokenizerState.BeforeDoctypeName:
-                    ConsumeNextInputChar();
-                    if (_currentInputChar.TryGet(out currChar))
-                    {
-                        Console.WriteLine($"[DBG] BeforeDoctypeName_1 | currChar = {currChar}");
-                        
-                        var cp = Codepoint.Get(currChar);
-                        if (cp.IsAsciiUpperAlpha())
-                        {
-                            CreateToken(new HtmlDoctypeToken
-                            {
-                                Name = Optional<string>.Of(char.ToLower(currChar).ToString())
-                            });
-                            SwitchToState(HtmlTokenizerState.DoctypeName);
-                            break;
-                        }
-                        
-                        switch (currChar)
-                        {
-                            case Codepoint.TAB:
-                            case Codepoint.LF:
-                            case Codepoint.FF:
-                            case Codepoint.SPACE:
-                                IgnoreCharacter();
-                                break;
-                            case Codepoint.NULL:
-                                CreateToken(new HtmlDoctypeToken
-                                {
-                                    Name = Optional<string>.Of(Codepoint.REPLACEMENT_CHARACTER.ToString())
-                                });
-                                SwitchToState(HtmlTokenizerState.DoctypeName);
-                                break;
-                            case '>':
-                                CreateToken(new HtmlDoctypeToken
-                                {
-                                    ForceQuirks = true
-                                });
-                                EmitCurrentToken();
+                                ParseError(HtmlParseError.MissingEndTagName);
                                 SwitchToState(HtmlTokenizerState.Data);
                                 break;
                             default:
-                                Console.WriteLine($"[DBG] BeforeDoctypeName_2 | currChar = {currChar}");
-                                CreateToken(new HtmlDoctypeToken
+                                if (Codepoint.Get(currChar).IsAsciiAlpha())
                                 {
-                                    Name = Optional<string>.Of(currChar.ToString())
-                                });
-                                SwitchToState(HtmlTokenizerState.DoctypeName);
+                                    CreateToken(new HtmlEndTagToken {TagName = ""});
+                                    ReconsumeInState(HtmlTokenizerState.TagName);
+                                    return;
+                                }
+                                ParseError(HtmlParseError.InvalidFirstCharacterOfTagName);
+                                CreateToken(new HtmlCommentToken {Data = ""});
+                                ReconsumeInState(HtmlTokenizerState.BogusComment);
                                 break;
                         }
                         return;
                     }
-                    ParseError(HtmlParseError.EofInDoctype);
-                    CreateToken(new HtmlDoctypeToken
-                    {
-                        ForceQuirks = true
-                    });
+                    ParseError(HtmlParseError.EofBeforeTagName);
+                    CreateToken(new HtmlCharacterToken {Data = '<'.ToString()});
+                    EmitCurrentToken();
+                    CreateToken(new HtmlCharacterToken {Data = '/'.ToString()});
                     EmitCurrentToken();
                     EmitEndOfFileToken();
                     break;
                 
-                case HtmlTokenizerState.DoctypeName:
-                    ConsumeNextInputChar();
-                    if (_currentInputChar.TryGet(out currChar))
-                    {
-                        switch (currChar)
-                        {
-                            case Codepoint.TAB:
-                            case Codepoint.LF:
-                            case Codepoint.FF:
-                            case Codepoint.SPACE:
-                                SwitchToState(HtmlTokenizerState.AfterDoctypeName);
-                                break;
-                            
-                            case '>':
-                                EmitCurrentToken();
-                                SwitchToState(HtmlTokenizerState.Data);
-                                break;
-                            
-                            case Codepoint.NULL:
-                                AppendCharToDoctypeTokenName(Codepoint.REPLACEMENT_CHARACTER);
-                                break;
-                            
-                            default:
-                                var cp = Codepoint.Get(currChar);
-                                AppendCharToDoctypeTokenName(cp.IsAsciiUpperAlpha()
-                                    ? char.ToLower(currChar)
-                                    : currChar);
-                                break;
-                        }
-                        return;
-                    }
-                    ParseError(HtmlParseError.EofInDoctype);
-                    ((HtmlDoctypeToken) _currentToken).ForceQuirks = true;
-                    EmitCurrentToken();
-                    EmitEndOfFileToken();
-                    break;
                 case HtmlTokenizerState.TagName:
                     ConsumeNextInputChar();
                     if (_currentInputChar.TryGet(out currChar))
@@ -337,38 +251,6 @@ namespace SharpDom.Tokenization
                         return;
                     }
                     ParseError(HtmlParseError.EofInTag);
-                    EmitEndOfFileToken();
-                    break;
-                
-                case HtmlTokenizerState.EndTagOpen:
-                    ConsumeNextInputChar();
-                    if (_currentInputChar.TryGet(out currChar))
-                    {
-                        switch (currChar)
-                        {
-                            case '>':
-                                ParseError(HtmlParseError.MissingEndTagName);
-                                SwitchToState(HtmlTokenizerState.Data);
-                                break;
-                            default:
-                                if (Codepoint.Get(currChar).IsAsciiAlpha())
-                                {
-                                    CreateToken(new HtmlEndTagToken {TagName = ""});
-                                    ReconsumeInState(HtmlTokenizerState.TagName);
-                                    return;
-                                }
-                                ParseError(HtmlParseError.InvalidFirstCharacterOfTagName);
-                                CreateToken(new HtmlCommentToken {Data = ""});
-                                ReconsumeInState(HtmlTokenizerState.BogusComment);
-                                break;
-                        }
-                        return;
-                    }
-                    ParseError(HtmlParseError.EofBeforeTagName);
-                    CreateToken(new HtmlCharacterToken {Data = '<'.ToString()});
-                    EmitCurrentToken();
-                    CreateToken(new HtmlCharacterToken {Data = '/'.ToString()});
-                    EmitCurrentToken();
                     EmitEndOfFileToken();
                     break;
                 
@@ -440,6 +322,39 @@ namespace SharpDom.Tokenization
                     }
                     CheckTagAttributes();
                     ReconsumeInState(HtmlTokenizerState.AfterAttributeName);
+                    break;
+                
+                case HtmlTokenizerState.AfterAttributeName:
+                    ConsumeNextInputChar();
+                    if (_currentInputChar.TryGet(out currChar))
+                    {
+                        switch (currChar)
+                        {
+                            case Codepoint.TAB:
+                            case Codepoint.LF:
+                            case Codepoint.FF:
+                            case Codepoint.SPACE:
+                                IgnoreCharacter();
+                                break;
+                            case '/':
+                                SwitchToState(HtmlTokenizerState.SelfClosingStartTag);
+                                break;
+                            case '=':
+                                SwitchToState(HtmlTokenizerState.BeforeAttributeValue);
+                                break;
+                            case '>':
+                                EmitCurrentToken();
+                                SwitchToState(HtmlTokenizerState.Data);
+                                break;
+                            default:
+                                ((HtmlTagToken) _currentToken).StartNewAttribute();
+                                ReconsumeInState(HtmlTokenizerState.AttributeName);
+                                break;
+                        }
+                        return;
+                    }
+                    ParseError(HtmlParseError.EofInTag);
+                    EmitEndOfFileToken();
                     break;
                 
                 case HtmlTokenizerState.BeforeAttributeValue:
@@ -598,6 +513,50 @@ namespace SharpDom.Tokenization
                     }
                     ParseError(HtmlParseError.EofInTag);
                     EmitEndOfFileToken();
+                    break;
+                
+                case HtmlTokenizerState.BogusComment:
+                    ConsumeNextInputChar();
+                    if (_currentInputChar.TryGet(out currChar))
+                    {
+                        switch (currChar)
+                        {
+                            case '>':
+                                EmitCurrentToken();
+                                SwitchToState(HtmlTokenizerState.Data);
+                                break;
+                            case Codepoint.NULL:
+                                ParseError(HtmlParseError.UnexpectedNullCharacter);
+                                ((HtmlCommentToken) _currentToken).Data += Codepoint.REPLACEMENT_CHARACTER;
+                                break;
+                            default:
+                                ((HtmlCommentToken) _currentToken).Data += currChar;
+                                break;
+                        }
+                        return;
+                    }
+                    EmitCurrentToken();
+                    EmitEndOfFileToken();
+                    break;
+                
+                case HtmlTokenizerState.MarkupDeclarationOpen:
+                    if (PeekCaseSensitive("--"))
+                    {
+                        ConsumeString("--");
+                        CreateToken(new HtmlCommentToken {Data = ""});
+                        SwitchToState(HtmlTokenizerState.CommentStart);
+                        return;
+                    }
+
+                    if (PeekCaseInsensitive("DOCTYPE"))
+                    {
+                        ConsumeString("DOCTYPE");
+                        SwitchToState(HtmlTokenizerState.Doctype);
+                        return;
+                    }
+                    ParseError(HtmlParseError.IncorrectlyOpenedComment);
+                    CreateToken(new HtmlCommentToken { Data = "" });
+                    SwitchToState(HtmlTokenizerState.BogusComment);
                     break;
                 
                 case HtmlTokenizerState.CommentStart:
@@ -802,35 +761,193 @@ namespace SharpDom.Tokenization
                     EmitCurrentToken();
                     EmitEndOfFileToken();
                     break;
-                
-                case HtmlTokenizerState.BogusComment:
+
+                case HtmlTokenizerState.Doctype:
                     ConsumeNextInputChar();
                     if (_currentInputChar.TryGet(out currChar))
                     {
                         switch (currChar)
                         {
-                            case '>':
-                                EmitCurrentToken();
-                                SwitchToState(HtmlTokenizerState.Data);
+                            case Codepoint.TAB:
+                            case Codepoint.LF:
+                            case Codepoint.FF:
+                            case Codepoint.SPACE:
+                                SwitchToState(HtmlTokenizerState.BeforeDoctypeName);
                                 break;
-                            case Codepoint.NULL:
-                                ParseError(HtmlParseError.UnexpectedNullCharacter);
-                                ((HtmlCommentToken) _currentToken).Data += Codepoint.REPLACEMENT_CHARACTER;
+                            
+                            case '>':
+                                ReconsumeInState(HtmlTokenizerState.BeforeDoctypeName);
                                 break;
                             default:
-                                ((HtmlCommentToken) _currentToken).Data += currChar;
+                                ParseError(HtmlParseError.MissingWhitespaceBeforeDoctypeName);
+                                ReconsumeInState(HtmlTokenizerState.BeforeDoctypeName);
                                 break;
                         }
                         return;
                     }
+                    ParseError(HtmlParseError.EofInDoctype);
+                    CreateToken(new HtmlDoctypeToken
+                    {
+                        ForceQuirks = true
+                    });
                     EmitCurrentToken();
                     EmitEndOfFileToken();
                     break;
                 
+                case HtmlTokenizerState.BeforeDoctypeName:
+                    ConsumeNextInputChar();
+                    if (_currentInputChar.TryGet(out currChar))
+                    {
+                        Console.WriteLine($"[DBG] BeforeDoctypeName_1 | currChar = {currChar}");
+                        
+                        var cp = Codepoint.Get(currChar);
+                        if (cp.IsAsciiUpperAlpha())
+                        {
+                            CreateToken(new HtmlDoctypeToken
+                            {
+                                Name = Optional<string>.Of(char.ToLower(currChar).ToString())
+                            });
+                            SwitchToState(HtmlTokenizerState.DoctypeName);
+                            break;
+                        }
+                        
+                        switch (currChar)
+                        {
+                            case Codepoint.TAB:
+                            case Codepoint.LF:
+                            case Codepoint.FF:
+                            case Codepoint.SPACE:
+                                IgnoreCharacter();
+                                break;
+                            case Codepoint.NULL:
+                                CreateToken(new HtmlDoctypeToken
+                                {
+                                    Name = Optional<string>.Of(Codepoint.REPLACEMENT_CHARACTER.ToString())
+                                });
+                                SwitchToState(HtmlTokenizerState.DoctypeName);
+                                break;
+                            case '>':
+                                CreateToken(new HtmlDoctypeToken
+                                {
+                                    ForceQuirks = true
+                                });
+                                EmitCurrentToken();
+                                SwitchToState(HtmlTokenizerState.Data);
+                                break;
+                            default:
+                                Console.WriteLine($"[DBG] BeforeDoctypeName_2 | currChar = {currChar}");
+                                CreateToken(new HtmlDoctypeToken
+                                {
+                                    Name = Optional<string>.Of(currChar.ToString())
+                                });
+                                SwitchToState(HtmlTokenizerState.DoctypeName);
+                                break;
+                        }
+                        return;
+                    }
+                    ParseError(HtmlParseError.EofInDoctype);
+                    CreateToken(new HtmlDoctypeToken
+                    {
+                        ForceQuirks = true
+                    });
+                    EmitCurrentToken();
+                    EmitEndOfFileToken();
+                    break;
+                
+                case HtmlTokenizerState.DoctypeName:
+                    ConsumeNextInputChar();
+                    if (_currentInputChar.TryGet(out currChar))
+                    {
+                        switch (currChar)
+                        {
+                            case Codepoint.TAB:
+                            case Codepoint.LF:
+                            case Codepoint.FF:
+                            case Codepoint.SPACE:
+                                SwitchToState(HtmlTokenizerState.AfterDoctypeName);
+                                break;
+                            
+                            case '>':
+                                EmitCurrentToken();
+                                SwitchToState(HtmlTokenizerState.Data);
+                                break;
+                            
+                            case Codepoint.NULL:
+                                AppendCharToDoctypeTokenName(Codepoint.REPLACEMENT_CHARACTER);
+                                break;
+                            
+                            default:
+                                var cp = Codepoint.Get(currChar);
+                                AppendCharToDoctypeTokenName(cp.IsAsciiUpperAlpha()
+                                    ? char.ToLower(currChar)
+                                    : currChar);
+                                break;
+                        }
+                        return;
+                    }
+                    ParseError(HtmlParseError.EofInDoctype);
+                    ((HtmlDoctypeToken) _currentToken).ForceQuirks = true;
+                    EmitCurrentToken();
+                    EmitEndOfFileToken();
+                    break;
+
+                case HtmlTokenizerState.CharacterReference:
+                    _temporaryBuffer.Clear();
+                    _temporaryBuffer.Append('&');
+                    ConsumeNextInputChar();
+                    if (_currentInputChar.TryGet(out currChar))
+                    {
+                        switch (currChar)
+                        {
+                            case '#':
+                                _temporaryBuffer.Append(currChar);
+                                SwitchToState(HtmlTokenizerState.NumericCharacterReference);
+                                break;
+                            default:
+                                if (Codepoint.Get(currChar).IsAsciiAlphanumeric())
+                                {
+                                    ReconsumeInState(HtmlTokenizerState.NamedCharacterReference);
+                                    return;
+                                }
+                                FlushCodepointsConsumedAsCharacterReference();
+                                ReconsumeInState(_returnState);
+                                break;
+                        }
+                        return;
+                    }
+                    FlushCodepointsConsumedAsCharacterReference();
+                    ReconsumeInState(_returnState);
+                    break;
+
                 default:
                     if(_debug) Console.WriteLine($"[DBG] Unhandled state: {Enum.GetName(_state)}");
                     EmitEndOfFileToken();
                     break;
+            }
+        }
+
+        private bool ConsumedAsPartOfAnAttribute()
+        {
+            return _returnState is
+                HtmlTokenizerState.AttributeValueDoubleQuoted
+                or HtmlTokenizerState.AttributeValueSingleQuoted
+                or HtmlTokenizerState.AttributeValueUnquoted;
+        }
+
+        private void FlushCodepointsConsumedAsCharacterReference()
+        {
+            if (ConsumedAsPartOfAnAttribute())
+            {
+                ((HtmlTagToken) _currentToken).CurrentAttribute.ValueBuilder.Append(_temporaryBuffer);
+                
+            }
+            else
+            {
+                foreach (var c in _temporaryBuffer.ToString())
+                {
+                    CreateToken(new HtmlCharacterToken {Data = c.ToString()});
+                    EmitCurrentToken();
+                }   
             }
         }
 
