@@ -1,6 +1,5 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.Linq;
 using System.Text.RegularExpressions;
 using SharpDom.Infra.Unicode;
 using SharpDom.Parsing;
@@ -769,26 +768,33 @@ namespace SharpDom.Tokenization
             // Remove "removed" attributes from HtmlTagTokens (e.g. duplicated attributes)
             if (_currentToken is HtmlTagToken tagToken)
             {
-                if (tagToken is HtmlStartTagToken startTagToken)
+                switch (tagToken)
                 {
-                    if (startTagToken.SelfClosing && !startTagToken.SelfClosingAcknowledged)
+                    case HtmlStartTagToken startTagToken:
                     {
-                        ParseError(HtmlParseError.NonVoidHtmlElementStartTagWithTrailingSolidus);
-                    }    
-                }
-                
-                if (tagToken is HtmlEndTagToken endTagToken)
-                {
-                    if (endTagToken.Attributes.Count > 0)
-                    {
-                        ParseError(HtmlParseError.EndTagWithAttributes);
-                    }
+                        if (startTagToken.SelfClosing && !startTagToken.SelfClosingAcknowledged)
+                        {
+                            ParseError(HtmlParseError.NonVoidHtmlElementStartTagWithTrailingSolidus);
+                        }
 
-                    if (endTagToken.SelfClosing)
+                        break;
+                    }
+                    case HtmlEndTagToken endTagToken:
                     {
-                        ParseError(HtmlParseError.EndTagWithTrailingSolidus);
+                        if (endTagToken.Attributes.Count > 0)
+                        {
+                            ParseError(HtmlParseError.EndTagWithAttributes);
+                        }
+
+                        if (endTagToken.SelfClosing)
+                        {
+                            ParseError(HtmlParseError.EndTagWithTrailingSolidus);
+                        }
+
+                        break;
                     }
                 }
+
                 tagToken.Attributes.RemoveAll(it => it.Removed);
             }
             _tokens.Enqueue(_currentToken);
