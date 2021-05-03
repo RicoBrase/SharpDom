@@ -17,6 +17,32 @@ namespace SharpDom.Tests.html5lib.tokenizer
         [Html5LibTokenizerTestData("html5lib-tests/tokenizer/test1.test")]
         public void Test1(Html5LibTokenizerTestData testCase)
         {
+            RunTestWithData(testCase);
+        }
+        
+        [Theory]
+        [Html5LibTokenizerTestData("html5lib-tests/tokenizer/test2.test")]
+        public void Test2(Html5LibTokenizerTestData testCase)
+        {
+            RunTestWithData(testCase);
+        }
+        
+        [Theory]
+        [Html5LibTokenizerTestData("html5lib-tests/tokenizer/test3.test")]
+        public void Test3(Html5LibTokenizerTestData testCase)
+        {
+            RunTestWithData(testCase);
+        }
+        
+        [Theory]
+        [Html5LibTokenizerTestData("html5lib-tests/tokenizer/test4.test")]
+        public void Test4(Html5LibTokenizerTestData testCase)
+        {
+            RunTestWithData(testCase);
+        }
+
+        private static void RunTestWithData(Html5LibTokenizerTestData testCase)
+        {
             // Arrange
             var initialState = testCase.InitialState switch
             {
@@ -75,14 +101,22 @@ namespace SharpDom.Tests.html5lib.tokenizer
                 actualErrors[i].ToString().Should().Be(testCase.Errors[i].Code);
             }
         }
-
+        
         private static void DoctypeTokensMatch(HtmlDoctypeToken actualToken,
             Html5LibTokenizerTestOutputDoctypeToken expectedToken)
         {
             // Name
-            actualToken.Name.HasValue.Should().BeTrue();
-            actualToken.Name.TryGet(out var actualTokenName);
-            actualTokenName.Should().Be(expectedToken.Name);
+            if (expectedToken.Name == null)
+            {
+                actualToken.Name.HasValue.Should().BeFalse();
+            }
+            else
+            {
+                actualToken.Name.HasValue.Should().BeTrue();
+                actualToken.Name.TryGet(out var actualTokenName);
+                actualTokenName.Should().Be(expectedToken.Name);
+            }
+            
 
             // PublicIdentifier
             if (expectedToken.PublicId == null)
