@@ -516,6 +516,28 @@ namespace SharpDom.Tokenization
                     EmitEndOfFileToken();
                     break;
                 
+                case HtmlTokenizerState.SelfClosingStartTag:
+                    ConsumeNextInputChar();
+                    if (_currentInputChar.TryGet(out currChar))
+                    {
+                        switch (currChar)
+                        {
+                            case '>':
+                                ((HtmlTagToken) _currentToken).SelfClosing = true;
+                                EmitCurrentToken();
+                                SwitchToState(HtmlTokenizerState.Data);
+                                break;
+                            default:
+                                ParseError(HtmlParseError.UnexpectedSolidusInTag);
+                                ReconsumeInState(HtmlTokenizerState.BeforeAttributeName);
+                                break;
+                        }
+                        return;
+                    }
+                    ParseError(HtmlParseError.EofInTag);
+                    EmitEndOfFileToken();
+                    break;
+                
                 case HtmlTokenizerState.BogusComment:
                     ConsumeNextInputChar();
                     if (_currentInputChar.TryGet(out currChar))
@@ -892,6 +914,500 @@ namespace SharpDom.Tokenization
                     EmitCurrentToken();
                     EmitEndOfFileToken();
                     break;
+                
+                case HtmlTokenizerState.AfterDoctypeName:
+                    ConsumeNextInputChar();
+                    if (_currentInputChar.TryGet(out currChar))
+                    {
+                        switch (currChar)
+                        {
+                            case Codepoint.TAB:
+                            case Codepoint.LF:
+                            case Codepoint.FF:
+                            case Codepoint.SPACE:
+                                IgnoreCharacter();
+                                break;
+                            case '>':
+                                EmitCurrentToken();
+                                SwitchToState(HtmlTokenizerState.Data);
+                                break;
+                            default:
+                                if (CheckForStringCaseInsensitiveFromCurrentInputCharacter("PUBLIC"))
+                                {
+                                    ConsumeStringFromCurrentInputCharacter("PUBLIC");
+                                    SwitchToState(HtmlTokenizerState.AfterDoctypePublicKeyword);
+                                    return;
+                                }
+                                else if (CheckForStringCaseInsensitiveFromCurrentInputCharacter("SYSTEM"))
+                                {
+                                    ConsumeStringFromCurrentInputCharacter("SYSTEM");
+                                    SwitchToState(HtmlTokenizerState.AfterDoctypeSystemKeyword);
+                                    return;
+                                }
+
+                                ParseError(HtmlParseError.InvalidCharacterSequenceAfterDoctypeName);
+                                ((HtmlDoctypeToken) _currentToken).ForceQuirks = true;
+                                ReconsumeInState(HtmlTokenizerState.BogusDoctype);
+                                break;
+                        }
+                        return;
+                    }
+                    ParseError(HtmlParseError.EofInDoctype);
+                    ((HtmlDoctypeToken) _currentToken).ForceQuirks = true;
+                    EmitCurrentToken();
+                    EmitEndOfFileToken();
+                    break;
+                
+                case HtmlTokenizerState.AfterDoctypePublicKeyword:
+                    ConsumeNextInputChar();
+                    if (_currentInputChar.TryGet(out currChar))
+                    {
+                        switch (currChar)
+                        {
+                            case Codepoint.TAB:
+                            case Codepoint.LF:
+                            case Codepoint.FF:
+                            case Codepoint.SPACE:
+                                SwitchToState(HtmlTokenizerState.BeforeDoctypePublicIdentifier);
+                                break;
+                            case '"':
+                                ParseError(HtmlParseError.MissingWhitespaceAfterDoctypePublicKeyword);
+                                ((HtmlDoctypeToken)_currentToken).PublicIdentifier = Optional<string>.Of("");
+                                SwitchToState(HtmlTokenizerState.DoctypePublicIdentifierDoubleQuoted);
+                                break;
+                            case Codepoint.APOSTROPHE:
+                                ParseError(HtmlParseError.MissingWhitespaceAfterDoctypePublicKeyword);
+                                ((HtmlDoctypeToken)_currentToken).PublicIdentifier = Optional<string>.Of("");
+                                SwitchToState(HtmlTokenizerState.DoctypePublicIdentifierSingleQuoted);
+                                break;
+                            case '>':
+                                ParseError(HtmlParseError.MissingDoctypePublicIdentifier);
+                                ((HtmlDoctypeToken) _currentToken).ForceQuirks = true;
+                                EmitCurrentToken();
+                                SwitchToState(HtmlTokenizerState.Data);
+                                break;
+                            default:
+                                ParseError(HtmlParseError.MissingQuoteBeforeDoctypePublicIdentifier);
+                                ((HtmlDoctypeToken) _currentToken).ForceQuirks = true;
+                                ReconsumeInState(HtmlTokenizerState.BogusDoctype);
+                                break;
+                        }
+                        return;
+                    }
+                    ParseError(HtmlParseError.EofInDoctype);
+                    ((HtmlDoctypeToken) _currentToken).ForceQuirks = true;
+                    EmitCurrentToken();
+                    EmitEndOfFileToken();
+                    break;
+
+                case HtmlTokenizerState.BeforeDoctypePublicIdentifier:
+                    ConsumeNextInputChar();
+                    if (_currentInputChar.TryGet(out currChar))
+                    {
+                        switch (currChar)
+                        {
+                            case Codepoint.TAB:
+                            case Codepoint.LF:
+                            case Codepoint.FF:
+                            case Codepoint.SPACE:
+                                IgnoreCharacter();
+                                break;
+                            case '"':
+                                ((HtmlDoctypeToken)_currentToken).PublicIdentifier = Optional<string>.Of("");
+                                SwitchToState(HtmlTokenizerState.DoctypePublicIdentifierDoubleQuoted);
+                                break;
+                            case Codepoint.APOSTROPHE:
+                                ((HtmlDoctypeToken)_currentToken).PublicIdentifier = Optional<string>.Of("");
+                                SwitchToState(HtmlTokenizerState.DoctypePublicIdentifierSingleQuoted);
+                                break;
+                            case '>':
+                                ParseError(HtmlParseError.MissingDoctypePublicIdentifier);
+                                ((HtmlDoctypeToken) _currentToken).ForceQuirks = true;
+                                EmitCurrentToken();
+                                SwitchToState(HtmlTokenizerState.Data);
+                                break;
+                            default:
+                                ParseError(HtmlParseError.MissingQuoteBeforeDoctypePublicIdentifier);
+                                ((HtmlDoctypeToken) _currentToken).ForceQuirks = true;
+                                ReconsumeInState(HtmlTokenizerState.BogusDoctype);
+                                break;
+                        }
+                        return;
+                    }
+                    ParseError(HtmlParseError.EofInDoctype);
+                    ((HtmlDoctypeToken) _currentToken).ForceQuirks = true;
+                    EmitCurrentToken();
+                    EmitEndOfFileToken();
+                    break;
+                
+                case HtmlTokenizerState.DoctypePublicIdentifierDoubleQuoted:
+                    ConsumeNextInputChar();
+                    if (_currentInputChar.TryGet(out currChar))
+                    {
+                        string doctypeTokenPubId;
+                        
+                        switch (currChar)
+                        {
+                            case '"':
+                                SwitchToState(HtmlTokenizerState.AfterDoctypePublicIdentifier);
+                                break;
+                            case Codepoint.NULL:
+                                ParseError(HtmlParseError.UnexpectedNullCharacter);
+                                ((HtmlDoctypeToken)_currentToken).PublicIdentifier = ((HtmlDoctypeToken) _currentToken).PublicIdentifier.TryGet(
+                                    out doctypeTokenPubId)
+                                    ? Optional<string>.Of(doctypeTokenPubId + Codepoint.REPLACEMENT_CHARACTER)
+                                    : Optional<string>.Of(Codepoint.REPLACEMENT_CHARACTER.ToString());
+                                break;
+                            case '>':
+                                ParseError(HtmlParseError.AbruptDoctypePublicIdentifier);
+                                ((HtmlDoctypeToken) _currentToken).ForceQuirks = true;
+                                EmitCurrentToken();
+                                SwitchToState(HtmlTokenizerState.Data);
+                                break;
+                            default:
+                                ((HtmlDoctypeToken)_currentToken).PublicIdentifier = ((HtmlDoctypeToken) _currentToken).PublicIdentifier.TryGet(
+                                    out doctypeTokenPubId)
+                                    ? Optional<string>.Of(doctypeTokenPubId + currChar)
+                                    : Optional<string>.Of(currChar.ToString());
+                                break;
+                        }
+                        return;
+                    }
+                    ParseError(HtmlParseError.EofInDoctype);
+                    ((HtmlDoctypeToken) _currentToken).ForceQuirks = true;
+                    EmitCurrentToken();
+                    EmitEndOfFileToken();
+                    break;
+                
+                case HtmlTokenizerState.DoctypePublicIdentifierSingleQuoted:
+                    ConsumeNextInputChar();
+                    if (_currentInputChar.TryGet(out currChar))
+                    {
+                        string doctypeTokenPubId;
+                        
+                        switch (currChar)
+                        {
+                            case Codepoint.APOSTROPHE:
+                                SwitchToState(HtmlTokenizerState.AfterDoctypePublicIdentifier);
+                                break;
+                            case Codepoint.NULL:
+                                ParseError(HtmlParseError.UnexpectedNullCharacter);
+                                ((HtmlDoctypeToken)_currentToken).PublicIdentifier = ((HtmlDoctypeToken) _currentToken).PublicIdentifier.TryGet(
+                                    out doctypeTokenPubId)
+                                    ? Optional<string>.Of(doctypeTokenPubId + Codepoint.REPLACEMENT_CHARACTER)
+                                    : Optional<string>.Of(Codepoint.REPLACEMENT_CHARACTER.ToString());
+                                break;
+                            case '>':
+                                ParseError(HtmlParseError.AbruptDoctypePublicIdentifier);
+                                ((HtmlDoctypeToken) _currentToken).ForceQuirks = true;
+                                EmitCurrentToken();
+                                SwitchToState(HtmlTokenizerState.Data);
+                                break;
+                            default:
+                                ((HtmlDoctypeToken)_currentToken).PublicIdentifier = ((HtmlDoctypeToken) _currentToken).PublicIdentifier.TryGet(
+                                    out doctypeTokenPubId)
+                                    ? Optional<string>.Of(doctypeTokenPubId + currChar)
+                                    : Optional<string>.Of(currChar.ToString());
+                                break;
+                        }
+                        return;
+                    }
+                    ParseError(HtmlParseError.EofInDoctype);
+                    ((HtmlDoctypeToken) _currentToken).ForceQuirks = true;
+                    EmitCurrentToken();
+                    EmitEndOfFileToken();
+                    break;
+                
+                case HtmlTokenizerState.AfterDoctypePublicIdentifier:
+                    ConsumeNextInputChar();
+                    if (_currentInputChar.TryGet(out currChar))
+                    {
+                        switch (currChar)
+                        {
+                            case Codepoint.TAB:
+                            case Codepoint.LF:
+                            case Codepoint.FF:
+                            case Codepoint.SPACE:
+                                SwitchToState(HtmlTokenizerState.BetweenDoctypePublicAndSystemIdentifiers);
+                                break;
+                            case '>':
+                                EmitCurrentToken();
+                                SwitchToState(HtmlTokenizerState.Data);
+                                break;
+                            case '"':
+                                ParseError(HtmlParseError.MissingWhitespaceBetweenDoctypePublicAndSystemIdentifiers);
+                                ((HtmlDoctypeToken)_currentToken).SystemIdentifier = Optional<string>.Of("");
+                                SwitchToState(HtmlTokenizerState.DoctypeSystemIdentifierDoubleQuoted);
+                                break;
+                            case Codepoint.APOSTROPHE:
+                                ParseError(HtmlParseError.MissingWhitespaceBetweenDoctypePublicAndSystemIdentifiers);
+                                ((HtmlDoctypeToken)_currentToken).SystemIdentifier = Optional<string>.Of("");
+                                SwitchToState(HtmlTokenizerState.DoctypeSystemIdentifierSingleQuoted);
+                                break;
+                            default:
+                                ParseError(HtmlParseError.MissingQuoteBeforeDoctypeSystemIdentifier);
+                                ((HtmlDoctypeToken) _currentToken).ForceQuirks = true;
+                                ReconsumeInState(HtmlTokenizerState.BogusDoctype);
+                                break;
+                        }
+                        return;
+                    }
+                    ParseError(HtmlParseError.EofInDoctype);
+                    ((HtmlDoctypeToken) _currentToken).ForceQuirks = true;
+                    EmitCurrentToken();
+                    EmitEndOfFileToken();
+                    break;
+                
+                case HtmlTokenizerState.BetweenDoctypePublicAndSystemIdentifiers:
+                    ConsumeNextInputChar();
+                    if (_currentInputChar.TryGet(out currChar))
+                    {
+                        switch (currChar)
+                        {
+                            case Codepoint.TAB:
+                            case Codepoint.LF:
+                            case Codepoint.FF:
+                            case Codepoint.SPACE:
+                                IgnoreCharacter();
+                                break;
+                            case '>':
+                                EmitCurrentToken();
+                                SwitchToState(HtmlTokenizerState.Data);
+                                break;
+                            case '"':
+                                ((HtmlDoctypeToken)_currentToken).SystemIdentifier = Optional<string>.Of("");
+                                SwitchToState(HtmlTokenizerState.DoctypeSystemIdentifierDoubleQuoted);
+                                break;
+                            case Codepoint.APOSTROPHE:
+                                ((HtmlDoctypeToken)_currentToken).SystemIdentifier = Optional<string>.Of("");
+                                SwitchToState(HtmlTokenizerState.DoctypeSystemIdentifierSingleQuoted);
+                                break;
+                            default:
+                                ParseError(HtmlParseError.MissingQuoteBeforeDoctypeSystemIdentifier);
+                                ((HtmlDoctypeToken) _currentToken).ForceQuirks = true;
+                                ReconsumeInState(HtmlTokenizerState.BogusDoctype);
+                                break;
+                        }
+                        return;
+                    }
+                    ParseError(HtmlParseError.EofInDoctype);
+                    ((HtmlDoctypeToken) _currentToken).ForceQuirks = true;
+                    EmitCurrentToken();
+                    EmitEndOfFileToken();
+                    break;
+                
+                case HtmlTokenizerState.AfterDoctypeSystemKeyword:
+                    ConsumeNextInputChar();
+                    if (_currentInputChar.TryGet(out currChar))
+                    {
+                        switch (currChar)
+                        {
+                            case Codepoint.TAB:
+                            case Codepoint.LF:
+                            case Codepoint.FF:
+                            case Codepoint.SPACE:
+                                SwitchToState(HtmlTokenizerState.BeforeDoctypeSystemIdentifier);
+                                break;
+                            case '"':
+                                ParseError(HtmlParseError.MissingWhitespaceAfterDoctypeSystemKeyword);
+                                ((HtmlDoctypeToken)_currentToken).SystemIdentifier = Optional<string>.Of("");
+                                SwitchToState(HtmlTokenizerState.DoctypeSystemIdentifierDoubleQuoted);
+                                break;
+                            case Codepoint.APOSTROPHE:
+                                ParseError(HtmlParseError.MissingWhitespaceAfterDoctypeSystemKeyword);
+                                ((HtmlDoctypeToken)_currentToken).SystemIdentifier = Optional<string>.Of("");
+                                SwitchToState(HtmlTokenizerState.DoctypeSystemIdentifierSingleQuoted);
+                                break;
+                            case '>':
+                                ParseError(HtmlParseError.MissingDoctypeSystemIdentifier);
+                                ((HtmlDoctypeToken) _currentToken).ForceQuirks = true;
+                                EmitCurrentToken();
+                                SwitchToState(HtmlTokenizerState.Data);
+                                break;
+                            default:
+                                ParseError(HtmlParseError.MissingQuoteBeforeDoctypeSystemIdentifier);
+                                ((HtmlDoctypeToken) _currentToken).ForceQuirks = true;
+                                ReconsumeInState(HtmlTokenizerState.BogusDoctype);
+                                break;
+                        }
+                        return;
+                    }
+                    ParseError(HtmlParseError.EofInDoctype);
+                    ((HtmlDoctypeToken) _currentToken).ForceQuirks = true;
+                    EmitCurrentToken();
+                    EmitEndOfFileToken();
+                    break;
+
+                case HtmlTokenizerState.BeforeDoctypeSystemIdentifier:
+                    ConsumeNextInputChar();
+                    if (_currentInputChar.TryGet(out currChar))
+                    {
+                        switch (currChar)
+                        {
+                            case Codepoint.TAB:
+                            case Codepoint.LF:
+                            case Codepoint.FF:
+                            case Codepoint.SPACE:
+                                IgnoreCharacter();
+                                break;
+                            case '"':
+                                ((HtmlDoctypeToken)_currentToken).SystemIdentifier = Optional<string>.Of("");
+                                SwitchToState(HtmlTokenizerState.DoctypeSystemIdentifierDoubleQuoted);
+                                break;
+                            case Codepoint.APOSTROPHE:
+                                ((HtmlDoctypeToken)_currentToken).SystemIdentifier = Optional<string>.Of("");
+                                SwitchToState(HtmlTokenizerState.DoctypeSystemIdentifierSingleQuoted);
+                                break;
+                            case '>':
+                                ParseError(HtmlParseError.MissingDoctypeSystemIdentifier);
+                                ((HtmlDoctypeToken) _currentToken).ForceQuirks = true;
+                                EmitCurrentToken();
+                                SwitchToState(HtmlTokenizerState.Data);
+                                break;
+                            default:
+                                ParseError(HtmlParseError.MissingQuoteBeforeDoctypeSystemIdentifier);
+                                ((HtmlDoctypeToken) _currentToken).ForceQuirks = true;
+                                ReconsumeInState(HtmlTokenizerState.BogusDoctype);
+                                break;
+                        }
+                        return;
+                    }
+                    ParseError(HtmlParseError.EofInDoctype);
+                    ((HtmlDoctypeToken) _currentToken).ForceQuirks = true;
+                    EmitCurrentToken();
+                    EmitEndOfFileToken();
+                    break;
+                
+                case HtmlTokenizerState.DoctypeSystemIdentifierDoubleQuoted:
+                    ConsumeNextInputChar();
+                    if (_currentInputChar.TryGet(out currChar))
+                    {
+                        string doctypeTokenSysId;
+                        
+                        switch (currChar)
+                        {
+                            case '"':
+                                SwitchToState(HtmlTokenizerState.AfterDoctypeSystemIdentifier);
+                                break;
+                            case Codepoint.NULL:
+                                ParseError(HtmlParseError.UnexpectedNullCharacter);
+                                ((HtmlDoctypeToken)_currentToken).SystemIdentifier = ((HtmlDoctypeToken) _currentToken).SystemIdentifier.TryGet(
+                                    out doctypeTokenSysId)
+                                    ? Optional<string>.Of(doctypeTokenSysId + Codepoint.REPLACEMENT_CHARACTER)
+                                    : Optional<string>.Of(Codepoint.REPLACEMENT_CHARACTER.ToString());
+                                break;
+                            case '>':
+                                ParseError(HtmlParseError.AbruptDoctypeSystemIdentifier);
+                                ((HtmlDoctypeToken) _currentToken).ForceQuirks = true;
+                                EmitCurrentToken();
+                                SwitchToState(HtmlTokenizerState.Data);
+                                break;
+                            default:
+                                ((HtmlDoctypeToken)_currentToken).SystemIdentifier = ((HtmlDoctypeToken) _currentToken).SystemIdentifier.TryGet(
+                                    out doctypeTokenSysId)
+                                    ? Optional<string>.Of(doctypeTokenSysId + currChar)
+                                    : Optional<string>.Of(currChar.ToString());
+                                break;
+                        }
+                        return;
+                    }
+                    ParseError(HtmlParseError.EofInDoctype);
+                    ((HtmlDoctypeToken) _currentToken).ForceQuirks = true;
+                    EmitCurrentToken();
+                    EmitEndOfFileToken();
+                    break;
+                
+                case HtmlTokenizerState.DoctypeSystemIdentifierSingleQuoted:
+                    ConsumeNextInputChar();
+                    if (_currentInputChar.TryGet(out currChar))
+                    {
+                        string doctypeTokenSysId;
+                        
+                        switch (currChar)
+                        {
+                            case Codepoint.APOSTROPHE:
+                                SwitchToState(HtmlTokenizerState.AfterDoctypeSystemIdentifier);
+                                break;
+                            case Codepoint.NULL:
+                                ParseError(HtmlParseError.UnexpectedNullCharacter);
+                                ((HtmlDoctypeToken)_currentToken).SystemIdentifier = ((HtmlDoctypeToken) _currentToken).SystemIdentifier.TryGet(
+                                    out doctypeTokenSysId)
+                                    ? Optional<string>.Of(doctypeTokenSysId + Codepoint.REPLACEMENT_CHARACTER)
+                                    : Optional<string>.Of(Codepoint.REPLACEMENT_CHARACTER.ToString());
+                                break;
+                            case '>':
+                                ParseError(HtmlParseError.AbruptDoctypeSystemIdentifier);
+                                ((HtmlDoctypeToken) _currentToken).ForceQuirks = true;
+                                EmitCurrentToken();
+                                SwitchToState(HtmlTokenizerState.Data);
+                                break;
+                            default:
+                                ((HtmlDoctypeToken)_currentToken).SystemIdentifier = ((HtmlDoctypeToken) _currentToken).SystemIdentifier.TryGet(
+                                    out doctypeTokenSysId)
+                                    ? Optional<string>.Of(doctypeTokenSysId + currChar)
+                                    : Optional<string>.Of(currChar.ToString());
+                                break;
+                        }
+                        return;
+                    }
+                    ParseError(HtmlParseError.EofInDoctype);
+                    ((HtmlDoctypeToken) _currentToken).ForceQuirks = true;
+                    EmitCurrentToken();
+                    EmitEndOfFileToken();
+                    break;
+                
+                case HtmlTokenizerState.AfterDoctypeSystemIdentifier:
+                    ConsumeNextInputChar();
+                    if (_currentInputChar.TryGet(out currChar))
+                    {
+                        switch (currChar)       
+                        {
+                            case Codepoint.TAB:
+                            case Codepoint.LF:
+                            case Codepoint.FF:
+                            case Codepoint.SPACE:
+                                IgnoreCharacter();
+                                break;
+                            case '>':
+                                EmitCurrentToken();
+                                SwitchToState(HtmlTokenizerState.Data);
+                                break;
+                            default:
+                                ParseError(HtmlParseError.UnexpectedCharacterAfterDoctypeSystemIdentifier);
+                                ReconsumeInState(HtmlTokenizerState.BogusDoctype);
+                                break;
+                        }
+                        return;
+                    }
+                    ParseError(HtmlParseError.EofInDoctype);
+                    ((HtmlDoctypeToken) _currentToken).ForceQuirks = true;
+                    EmitCurrentToken();
+                    EmitEndOfFileToken();
+                    break;
+                
+                case HtmlTokenizerState.BogusDoctype:
+                    ConsumeNextInputChar();
+                    if (_currentInputChar.TryGet(out currChar))
+                    {
+                        switch (currChar)
+                        {
+                            case '>':
+                                EmitCurrentToken();
+                                SwitchToState(HtmlTokenizerState.Data);
+                                break;
+                            case Codepoint.NULL:
+                                ParseError(HtmlParseError.UnexpectedNullCharacter);
+                                IgnoreCharacter();
+                                break;
+                            default:
+                                IgnoreCharacter();
+                                break;
+                        }
+                        return;
+                    }
+                    EmitCurrentToken();
+                    EmitEndOfFileToken();
+                    break;
 
                 case HtmlTokenizerState.CharacterReference:
                     _temporaryBuffer.Clear();
@@ -1241,10 +1757,10 @@ namespace SharpDom.Tokenization
                 {
                     case HtmlStartTagToken startTagToken:
                     {
-                        if (startTagToken.SelfClosing && !startTagToken.SelfClosingAcknowledged)
-                        {
-                            ParseError(HtmlParseError.NonVoidHtmlElementStartTagWithTrailingSolidus);
-                        }
+                        // if (startTagToken.SelfClosing && !startTagToken.SelfClosingAcknowledged)
+                        // {
+                        //     ParseError(HtmlParseError.NonVoidHtmlElementStartTagWithTrailingSolidus);
+                        // }
 
                         break;
                     }
@@ -1310,6 +1826,18 @@ namespace SharpDom.Tokenization
             }
             if(_debug) Console.WriteLine("[DBG] ConsumeString END");
         }
+        
+        private void ConsumeStringFromCurrentInputCharacter(string consume)
+        {
+            if(_debug) Console.WriteLine("[DBG] ConsumeString START");
+            if(consume.Length <= 1) return;
+            
+            foreach (var _ in consume[1..])
+            {
+                ConsumeNextInputChar();
+            }
+            if(_debug) Console.WriteLine("[DBG] ConsumeString END");
+        }
 
         private bool CheckForStringCaseSensitive(string peek)
         {
@@ -1331,6 +1859,20 @@ namespace SharpDom.Tokenization
             for (var i = 0; i < peek.Length; i++)
             {
                 match = CheckForCharCaseInsensitiveAt(peek[i], i);
+            }
+            return match;
+        }
+        
+        private bool CheckForStringCaseInsensitiveFromCurrentInputCharacter(string peek)
+        {
+            if (peek.Length - 2 + _cursor > _input.Length) return false;
+            if (!_currentInputChar.TryGet(out var currChar)) return false;
+            
+            var match = char.ToLower(currChar) == char.ToLower(peek[0]);
+            for (var i = 0; i < peek.Length - 1; i++)
+            {
+                if (!match) break;
+                match = CheckForCharCaseInsensitiveAt(peek[i+1], i);
             }
             return match;
         }
