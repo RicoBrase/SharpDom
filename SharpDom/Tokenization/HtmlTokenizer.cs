@@ -16,6 +16,7 @@ namespace SharpDom.Tokenization
         private readonly Queue<HtmlParseError> _errors = new();
 
         private int _cursor;
+        private int _characterReferenceCode;
         private bool _reconsume;
         private bool _isEof;
         
@@ -24,7 +25,7 @@ namespace SharpDom.Tokenization
         private HtmlTokenizerState _state = HtmlTokenizerState.Data;
         private HtmlTokenizerState _returnState;
 
-        private StringBuilder _temporaryBuffer = new();
+        private readonly StringBuilder _temporaryBuffer = new();
         
         private Optional<char> _nextInputChar = Optional<char>.Empty();
         private Optional<char> _currentInputChar = Optional<char>.Empty();
@@ -399,7 +400,7 @@ namespace SharpDom.Tokenization
                                 SwitchToState(HtmlTokenizerState.AfterAttributeValueQuoted);
                                 break;
                             case '&':
-                                // TODO: Set return state
+                                _returnState = HtmlTokenizerState.AttributeValueDoubleQuoted;
                                 SwitchToState(HtmlTokenizerState.CharacterReference);
                                 break;
                             case Codepoint.NULL:
@@ -426,7 +427,7 @@ namespace SharpDom.Tokenization
                                 SwitchToState(HtmlTokenizerState.AfterAttributeValueQuoted);
                                 break;
                             case '&':
-                                // TODO: Set return state
+                                _returnState = HtmlTokenizerState.AttributeValueSingleQuoted;
                                 SwitchToState(HtmlTokenizerState.CharacterReference);
                                 break;
                             case Codepoint.NULL:
@@ -456,7 +457,7 @@ namespace SharpDom.Tokenization
                                 SwitchToState(HtmlTokenizerState.BeforeAttributeName);
                                 break;
                             case '&':
-                                // TODO: Set return state
+                                _returnState = HtmlTokenizerState.AttributeValueUnquoted;
                                 SwitchToState(HtmlTokenizerState.CharacterReference);
                                 break;
                             case '>':
@@ -540,7 +541,7 @@ namespace SharpDom.Tokenization
                     break;
                 
                 case HtmlTokenizerState.MarkupDeclarationOpen:
-                    if (PeekCaseSensitive("--"))
+                    if (CheckForStringCaseSensitive("--"))
                     {
                         ConsumeString("--");
                         CreateToken(new HtmlCommentToken {Data = ""});
@@ -548,7 +549,7 @@ namespace SharpDom.Tokenization
                         return;
                     }
 
-                    if (PeekCaseInsensitive("DOCTYPE"))
+                    if (CheckForStringCaseInsensitive("DOCTYPE"))
                     {
                         ConsumeString("DOCTYPE");
                         SwitchToState(HtmlTokenizerState.Doctype);
@@ -918,7 +919,279 @@ namespace SharpDom.Tokenization
                     FlushCodepointsConsumedAsCharacterReference();
                     ReconsumeInState(_returnState);
                     break;
+                
+                case HtmlTokenizerState.NamedCharacterReference:
+                    string possibleMatch = null;
+                    var cursorPos = 0;
 
+                    while (true)
+                    {
+                        ConsumeNextInputChar();
+                        int countPossibleReferences;
+                        if (!_currentInputChar.TryGet(out currChar))
+                        {
+                            if (possibleMatch == null) break;
+
+                            countPossibleReferences = 1;
+                        }
+                        else
+                        {
+                            _temporaryBuffer.Append(currChar);
+                            countPossibleReferences =
+                                NamedCharacterReference.GetAllPossibleNamedCharacterReferences(
+                                    _temporaryBuffer.ToString());
+                            if (NamedCharacterReference.IsNamedCharacterReference(_temporaryBuffer.ToString()))
+                            {
+                                possibleMatch = _temporaryBuffer.ToString();
+                                cursorPos = _cursor - 1;
+                            }
+                        }
+
+                        if (countPossibleReferences != 1) continue;
+                        // MATCHED
+
+                        if (possibleMatch is not null)
+                        {
+                            _temporaryBuffer.Clear();
+                            _temporaryBuffer.Append(possibleMatch);
+                        }
+
+                        _cursor = cursorPos;
+                        ConsumeNextInputChar();
+                            
+                        if (!_currentInputChar.TryGet(out currChar)) break;
+                        if (_nextInputChar.TryGet(out var nextChar))
+                        {
+                            if (ConsumedAsPartOfAnAttribute() && currChar != ';' &&
+                                (nextChar == '=' || Codepoint.Get(nextChar).IsAsciiAlphanumeric()))
+                            {
+                                FlushCodepointsConsumedAsCharacterReference();
+                                SwitchToState(_returnState);
+                                return;
+                            }
+                        }
+
+                        if (currChar != ';')
+                        {
+                            ParseError(HtmlParseError.MissingSemicolonAfterCharacterReference);
+                        }
+
+                        var namedCharReference = _temporaryBuffer.ToString();
+                        _temporaryBuffer.Clear();
+                        _temporaryBuffer.Append(
+                            NamedCharacterReference.GetCodepointsOfNamedCharacterReference(namedCharReference));
+
+                        FlushCodepointsConsumedAsCharacterReference();
+                        SwitchToState(_returnState);
+                            
+                        return;
+                    }
+                    FlushCodepointsConsumedAsCharacterReference();
+                    SwitchToState(HtmlTokenizerState.AmbiguousAmpersand);
+                    break;
+                
+                case HtmlTokenizerState.AmbiguousAmpersand:
+                    ConsumeNextInputChar();
+                    if (_currentInputChar.TryGet(out currChar))
+                    {
+                        switch (currChar)
+                        {
+                            case ';':
+                                ParseError(HtmlParseError.UnknownNamedCharacterReference);
+                                ReconsumeInState(_returnState);
+                                break;
+                            default:
+                                if (Codepoint.Get(currChar).IsAsciiAlphanumeric())
+                                {
+                                    if (ConsumedAsPartOfAnAttribute())
+                                    {
+                                        ((HtmlTagToken) _currentToken).CurrentAttribute.ValueBuilder.Append(currChar);
+                                    }
+                                    else
+                                    {
+                                        CreateToken(new HtmlCharacterToken { Data = currChar.ToString() });
+                                        EmitCurrentToken();
+                                    }
+
+                                    break;
+                                }
+                                ReconsumeInState(_returnState);
+                                break;
+                        }
+                        return;
+                    }
+                    ReconsumeInState(_returnState);
+                    break;
+
+                case HtmlTokenizerState.NumericCharacterReference:
+                    _characterReferenceCode = 0;
+                    ConsumeNextInputChar();
+                    if (_currentInputChar.TryGet(out currChar))
+                    {
+                        switch (currChar)
+                        {
+                            case 'x':
+                            case 'X':
+                                _temporaryBuffer.Append(currChar);
+                                SwitchToState(HtmlTokenizerState.HexadecimalCharacterReferenceStart);
+                                break;
+                            default:
+                                ReconsumeInState(HtmlTokenizerState.DecimalCharacterReference);
+                                break;
+                        }
+                        return;
+                    }
+                    ReconsumeInState(HtmlTokenizerState.DecimalCharacterReferenceStart);
+                    break;
+                
+                case HtmlTokenizerState.HexadecimalCharacterReferenceStart:
+                    ConsumeNextInputChar();
+                    if (_currentInputChar.TryGet(out currChar))
+                    {
+                        if (Codepoint.Get(currChar).IsAsciiHexDigit())
+                        {
+                            ReconsumeInState(HtmlTokenizerState.HexadecimalCharacterReference);
+                            return;
+                        }
+                    }
+                    ParseError(HtmlParseError.AbsenceOfDigitsInNumericCharacterReference);
+                    FlushCodepointsConsumedAsCharacterReference();
+                    ReconsumeInState(_returnState);
+                    break;
+                
+                case HtmlTokenizerState.DecimalCharacterReferenceStart:
+                    ConsumeNextInputChar();
+                    if (_currentInputChar.TryGet(out currChar))
+                    {
+                        if (Codepoint.Get(currChar).IsAsciiDigit())
+                        {
+                            ReconsumeInState(HtmlTokenizerState.DecimalCharacterReference);
+                            return;
+                        }
+                    }
+                    ParseError(HtmlParseError.AbsenceOfDigitsInNumericCharacterReference);
+                    FlushCodepointsConsumedAsCharacterReference();
+                    ReconsumeInState(_returnState);
+                    break;
+                
+                case HtmlTokenizerState.HexadecimalCharacterReference:
+                    ConsumeNextInputChar();
+                    if (_currentInputChar.TryGet(out currChar))
+                    {
+                        var cp = Codepoint.Get(currChar);
+                        if (cp.IsAsciiDigit())
+                        {
+                            _characterReferenceCode *= 16;
+                            _characterReferenceCode += cp.Subtract(0x0030);
+                            return;
+                        }
+                        if (cp.IsAsciiUpperHexDigit())
+                        {
+                            _characterReferenceCode *= 16;
+                            _characterReferenceCode += cp.Subtract(0x0037);
+                            return;
+                        }
+                        if (cp.IsAsciiLowerHexDigit())
+                        {
+                            _characterReferenceCode *= 16;
+                            _characterReferenceCode += cp.Subtract(0x0057);
+                            return;
+                        }
+
+                        if (currChar == ';')
+                        {
+                            SwitchToState(HtmlTokenizerState.NumericCharacterReferenceEnd);
+                            return;
+                        }
+                    }
+                    ParseError(HtmlParseError.MissingSemicolonAfterCharacterReference);
+                    ReconsumeInState(HtmlTokenizerState.NumericCharacterReferenceEnd);
+                    break;
+                
+                case HtmlTokenizerState.DecimalCharacterReference:
+                    ConsumeNextInputChar();
+                    if (_currentInputChar.TryGet(out currChar))
+                    {
+                        var cp = Codepoint.Get(currChar);
+                        if (cp.IsAsciiDigit())
+                        {
+                            _characterReferenceCode *= 10;
+                            _characterReferenceCode += cp.Subtract(0x0030);
+                            return;
+                        }
+
+                        if (currChar == ';')
+                        {
+                            SwitchToState(HtmlTokenizerState.NumericCharacterReferenceEnd);
+                            return;
+                        }
+                    }
+                    ParseError(HtmlParseError.MissingSemicolonAfterCharacterReference);
+                    ReconsumeInState(HtmlTokenizerState.NumericCharacterReferenceEnd);
+                    break;
+                
+                case HtmlTokenizerState.NumericCharacterReferenceEnd:
+
+                    var charRefCp = Codepoint.Get(_characterReferenceCode);
+                    
+                    if (_characterReferenceCode == Codepoint.NULL)
+                    {
+                        ParseError(HtmlParseError.NullCharacterReference);
+                        _characterReferenceCode = Codepoint.REPLACEMENT_CHARACTER;
+                    }else if (_characterReferenceCode > 0x10FFFF)
+                    {
+                        ParseError(HtmlParseError.CharacterReferenceOutsideUnicodeRange);
+                        _characterReferenceCode = Codepoint.REPLACEMENT_CHARACTER;
+                    }else if (charRefCp.IsSurrogate())
+                    {
+                        ParseError(HtmlParseError.SurrogateCharacterReference);
+                        _characterReferenceCode = Codepoint.REPLACEMENT_CHARACTER;
+                    }else if (charRefCp.IsNonCharacter())
+                    {
+                        ParseError(HtmlParseError.NonCharacterCharacterReference);
+                    }else if (_characterReferenceCode == Codepoint.CR ||
+                              charRefCp.IsControl() && !charRefCp.IsAsciiWhitespace())
+                    {
+                        ParseError(HtmlParseError.ControlCharacterReference);
+                        _characterReferenceCode = _characterReferenceCode switch
+                        {
+                            0x80 => 0x20AC,
+                            0x82 => 0x201A,
+                            0x83 => 0x0192,
+                            0x84 => 0x201E,
+                            0x85 => 0x2026,
+                            0x86 => 0x2020,
+                            0x87 => 0x2021,
+                            0x88 => 0x02C6,
+                            0x89 => 0x2030,
+                            0x8A => 0x0160,
+                            0x8B => 0x2039,
+                            0x8C => 0x0152,
+                            0x8E => 0x017D,
+                            0x91 => 0x2018,
+                            0x92 => 0x2019,
+                            0x93 => 0x201C,
+                            0x94 => 0x201D,
+                            0x95 => 0x2022,
+                            0x96 => 0x2013,
+                            0x97 => 0x2014,
+                            0x98 => 0x02DC,
+                            0x99 => 0x2122,
+                            0x9A => 0x0161,
+                            0x9B => 0x203A,
+                            0x9C => 0x0153,
+                            0x9E => 0x017E,
+                            0x9F => 0x0178,
+                            _ => _characterReferenceCode
+                        };
+                    }
+                    
+                    _temporaryBuffer.Clear();
+                    _temporaryBuffer.Append((char) _characterReferenceCode);
+                    FlushCodepointsConsumedAsCharacterReference();
+                    SwitchToState(_returnState);
+                    break;
+                
                 default:
                     if(_debug) Console.WriteLine($"[DBG] Unhandled state: {Enum.GetName(_state)}");
                     EmitEndOfFileToken();
@@ -1018,8 +1291,12 @@ namespace SharpDom.Tokenization
                 Debug_PrintChars();
                 return;
             }
-            _currentInputChar = _nextInputChar;
+            _currentInputChar = _cursor <= 0 || _cursor - 1 >= _input.Length ? Optional<char>.Empty() : Optional<char>.Of(_input[_cursor-1]);
             _nextInputChar = _cursor >= _input.Length ? Optional<char>.Empty() : Optional<char>.Of(_input[_cursor++]);
+            if (!_nextInputChar.HasValue)
+            {
+                _cursor++;
+            }
             if(_debug) Debug_PrintChars();
         }
 
@@ -1033,38 +1310,38 @@ namespace SharpDom.Tokenization
             if(_debug) Console.WriteLine("[DBG] ConsumeString END");
         }
 
-        private bool PeekCaseSensitive(string peek)
+        private bool CheckForStringCaseSensitive(string peek)
         {
             if (peek.Length + _cursor > _input.Length) return false;
             
             var match = true;
             for (var i = 0; i < peek.Length; i++)
             {
-                match = PeekCharCaseSensitive(peek[i], i);
+                match = CheckForCharCaseSensitiveAt(peek[i], i);
             }
             return match;
         }
         
-        private bool PeekCaseInsensitive(string peek)
+        private bool CheckForStringCaseInsensitive(string peek)
         {
             if (peek.Length + _cursor > _input.Length) return false;
             
             var match = true;
             for (var i = 0; i < peek.Length; i++)
             {
-                match = PeekCharCaseInsensitive(peek[i], i);
+                match = CheckForCharCaseInsensitiveAt(peek[i], i);
             }
             return match;
         }
 
-        private bool PeekCharCaseSensitive(char c, int offset)
+        private bool CheckForCharCaseSensitiveAt(char c, int offset)
         {
             var peekCursor = _cursor - 1 + offset;
             if(_debug) Console.WriteLine($"[DBG] PEEK_CaseSensitive | Expected: {c} Actual: {_input[peekCursor]}");
             return peekCursor < _input.Length && _input[peekCursor] == c;
         }
         
-        private bool PeekCharCaseInsensitive(char c, int offset)
+        private bool CheckForCharCaseInsensitiveAt(char c, int offset)
         {
             var peekCursor = _cursor - 1 + offset;
             if(_debug) Console.WriteLine($"[DBG] PEEK_CaseInsensitive | Expected: |{c}| Actual: |{_input[peekCursor]}|");

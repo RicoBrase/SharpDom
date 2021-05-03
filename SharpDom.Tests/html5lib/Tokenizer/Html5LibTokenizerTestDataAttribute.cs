@@ -152,6 +152,7 @@ namespace SharpDom.Tests.html5lib.tokenizer
             var maxIndexString = index.ToString();
             
             var testData = tests
+                .Where(it => it.InitialState != "Script data state")
                 .Select(it =>
                 {
                     while (maxIndexString.Length > it.Index.Length)

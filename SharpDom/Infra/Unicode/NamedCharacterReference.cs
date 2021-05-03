@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Net;
@@ -17,7 +18,7 @@ namespace SharpDom.Infra.Unicode
             get { return _instance ??= new NamedCharacterReference(); }
         }
 
-        private JObject _entities;
+        private readonly JObject _entities;
 
         private NamedCharacterReference()
         {
@@ -40,7 +41,13 @@ namespace SharpDom.Infra.Unicode
             }
 
             var codepoints = (JArray)codepointsJson["codepoints"];
+            if (codepoints is null) throw new Exception(@"Missing ""codepoints"" key in entities.json file");
             return codepoints.Select(it => (char) it).ToArray();
+        }
+
+        public static int GetAllPossibleNamedCharacterReferences(string input)
+        {
+            return Instance._entities.Properties().Count(it => it.Name.StartsWith(input));
         }
     }
 }

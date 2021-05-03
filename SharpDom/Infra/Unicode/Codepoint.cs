@@ -129,6 +129,11 @@ namespace SharpDom.Infra.Unicode
         {
             return IsAsciiDigit() || IsAsciiAlpha();
         }
+
+        public int Subtract(int subtrahend)
+        {
+            return _codepoint - subtrahend;
+        }
         
         // Static
 
