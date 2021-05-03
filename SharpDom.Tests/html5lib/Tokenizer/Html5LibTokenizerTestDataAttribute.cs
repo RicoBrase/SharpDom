@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Reflection;
+using System.Text.RegularExpressions;
 using Newtonsoft.Json.Linq;
 using SharpDom.Tests.html5lib.Tokenizer.OutputTokens;
 using Xunit.Sdk;
@@ -55,8 +56,8 @@ namespace SharpDom.Tests.html5lib.tokenizer
                             outputTokens.Add(new Html5LibTokenizerTestOutputDoctypeToken
                             {
                                 Name = (string)output[1],
-                                PublicId = (string)output[2],
-                                SystemId = (string)output[3],
+                                PublicId = (string)output[2] is not null ? Regex.Unescape(((string)output[2])!) : null,
+                                SystemId = (string)output[3] is not null ? Regex.Unescape(((string)output[3])!) : null,
                                 Correctness= (bool)output[4],
                             });
                             break;
