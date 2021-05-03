@@ -828,6 +828,7 @@ namespace SharpDom.Tokenization
                                 SwitchToState(HtmlTokenizerState.DoctypeName);
                                 break;
                             case '>':
+                                ParseError(HtmlParseError.MissingDoctypeName);
                                 CreateToken(new HtmlDoctypeToken
                                 {
                                     ForceQuirks = true
